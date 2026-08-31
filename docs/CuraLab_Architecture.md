@@ -33,7 +33,7 @@ The platform is engineered with a decoupled architecture:
 10. [Project Directory & File Structure](#10-project-directory--file-structure)
 11. [Environment Configuration](#11-environment-configuration)
 12. [Step-by-Step Implementation Roadmap](#12-step-by-step-implementation-roadmap)
-13. [Deployment & Production Setup](#13-deployment--production-setup)
+13. [Deployment & CI/CD Pipeline (GitHub to Vercel)](#13-deployment--cicd-pipeline-github-to-vercel)
 14. [Clinical Safety & Compliance Disclaimers](#14-clinical-safety--compliance-disclaimers)
 
 ---
@@ -660,22 +660,120 @@ Scaffolding      pgvector Setup   Validations      Analysis Agent   Polish
 
 ---
 
-## 13. Deployment & Production Setup
+## 13. Deployment & CI/CD Pipeline (GitHub to Vercel Integration)
 
-### Frontend Deployment (Vite SPA)
-* **Hosts:** Vercel, Netlify, or Cloudflare Pages.
-* **Build Command:** `npm run build` (Outputs to `dist/`).
-* **SPA Routing Rule:** Add rewrite for single-page applications:
-  ```json
-  // vercel.json (for client)
-  {
-    "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-  }
-  ```
+### Native Git-Push Deployment Architecture
 
-### Backend Deployment (Node.js API)
-* **Hosts:** Render, Railway, Fly.io, AWS App Runner, or Vercel Serverless.
+CuraLab AI uses **Vercel's Native GitHub Integration** for zero-friction continuous deployment. Once the GitHub repository is connected to Vercel via the Vercel GitHub App, every push to the repository automatically triggers an optimized cloud build and instant global edge deployment.
+
+```mermaid
+flowchart TD
+    subgraph Developer["Local Development"]
+        Code["Code Changes / Biomarker Features"]
+        Commit["git commit -m 'feat: lab report analyzer'"]
+        Push["git push origin main"]
+        PR_Branch["git push origin feature-branch (Pull Request)"]
+    end
+
+    subgraph GitHub["GitHub (rrabia133-sketch/curalab-ai)"]
+        MainBranch["'main' Branch (Production Track)"]
+        PR["Pull Request / Feature Branch"]
+        Webhook["GitHub Webhook (Native Vercel App)"]
+    end
+
+    subgraph Vercel["Vercel Cloud CI/CD Engine"]
+        BuildEngine["Vercel Build Server\n(Vite Build -> dist/)"]
+        EnvInject["Inject Environment Variables\n(VITE_SUPABASE_URL, VITE_API_URL, etc.)"]
+        EdgeDeploy["Global Edge Network Deployment"]
+    end
+
+    subgraph Output["Live Production & Preview Environments"]
+        ProdDomain["🟢 Production Live URL\nhttps://curalab-ai.vercel.app"]
+        PreviewDomain["🟡 Preview URL (Isolated per PR)\nhttps://curalab-ai-git-feature-*.vercel.app"]
+    end
+
+    Code --> Commit
+    Commit --> Push --> MainBranch --> Webhook
+    Commit --> PR_Branch --> PR --> Webhook
+
+    Webhook --> BuildEngine
+    BuildEngine --> EnvInject --> EdgeDeploy
+
+    EdgeDeploy -->|Triggered from 'main'| ProdDomain
+    EdgeDeploy -->|Triggered from PR| PreviewDomain
+
+    style Developer fill:#f8fafc,stroke:#64748b,stroke-width:2px
+    style GitHub fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+    style Vercel fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
+    style Output fill:#faf5ff,stroke:#9333ea,stroke-width:2px
+```
+
+---
+
+### Step-by-Step: Connecting GitHub to Vercel
+
+```
+Step 1 ────────────────► Step 2 ────────────────► Step 3 ────────────────► Step 4
+Go to Vercel &           Import Repo              Configure Root &         Push to 'main'
+Install GitHub App       'curalab-ai'             Environment Variables    Auto-Deploy!
+```
+
+#### Step 1: Install Vercel GitHub App & Connect Account
+1. Log in to [Vercel Dashboard](https://vercel.com).
+2. Click **"Add New..."** ➔ **"Project"**.
+3. Under *Import Git Repository*, select **GitHub**. If not yet connected, click **"Install Vercel for GitHub"** and grant access to your repository `rrabia133-sketch/curalab-ai`.
+
+#### Step 2: Import the Repository
+1. Locate `curalab-ai` in the list of repositories and click **"Import"**.
+
+#### Step 3: Configure Project Settings on Vercel Dashboard
+In the project configuration screen:
+* **Framework Preset:** Select `Vite`.
+* **Root Directory:** If the React application resides in `client`, click *Edit* and select `./client` (or leave `./` if at root).
+* **Build Command:** `npm run build` (detected automatically).
+* **Output Directory:** `dist` (detected automatically).
+* **Install Command:** `npm install`.
+
+#### Step 4: Add Environment Variables in Vercel
+Expand the **Environment Variables** section on Vercel and add:
+
+| Key | Value | Target Environment |
+| :--- | :--- | :--- |
+| `VITE_SUPABASE_URL` | `https://your-project.supabase.co` | Production, Preview, Development |
+| `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOi...` | Production, Preview, Development |
+| `VITE_API_URL` | `https://your-backend-api.onrender.com` | Production, Preview, Development |
+
+Click **"Deploy"**. Vercel will build and assign your initial production domain (e.g. `https://curalab-ai.vercel.app`).
+
+---
+
+### The Continuous Deployment Flow (Daily Workflow)
+
+Once connected, no manual action on Vercel is ever needed:
+
+1. **Deploying Updates to Production:**
+   ```bash
+   git add .
+   git commit -m "feat: updated biomarker range indicators"
+   git push origin main
+   ```
+   * *Vercel automatically detects the push to `main`, executes the build in seconds, and updates production with zero downtime.*
+
+2. **Previewing Changes Before Merging:**
+   ```bash
+   git checkout -b feature/pdf-ocr-enhancement
+   git commit -m "feat: improved OCR parsing speed"
+   git push origin feature/pdf-ocr-enhancement
+   ```
+   * *When a Pull Request is opened on GitHub, Vercel automatically deploys a private Preview URL and comments on the PR with the link for instant visual QA testing.*
+
+---
+
+### Backend API Deployment (Node.js / Express)
+* **Hosts:** Render, Railway, Fly.io, or AWS App Runner.
+* **Continuous Deployment:** Connect the same GitHub repository (`rrabia133-sketch/curalab-ai`) with Root Directory set to `./server`.
 * **Build Command:** `npm run build` -> `npm start` (Runs compiled `dist/index.js`).
+* **Health Check Endpoint:** `GET /health` or `GET /api/user/quota`.
 
 ---
 

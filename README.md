@@ -10,11 +10,12 @@
 ![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase_&_pgvector-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
 ![Groq](https://img.shields.io/badge/Groq_Cloud-F55036?style=for-the-badge&logo=fastapi&logoColor=white)
-![Ollama](https://img.shields.io/badge/Ollama_Fallback-000000?style=for-the-badge&logo=ollama&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel_Deployment-000000?style=for-the-badge&logo=vercel&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions_CI%2FCD-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)
 
 **Turn complex medical laboratory reports into clear, structured biomarker insights and interactive doctor-ready follow-ups.**
 
-[Features](#-key-features) • [Architecture](#-system-architecture) • [Tech Stack](#-technology-stack) • [Quick Start](#-quick-start) • [Database Setup](#-database--vector-setup) • [Environment Config](#-environment-variables) • [Clinical Safety](#-clinical-safety--disclaimer)
+[Features](#-key-features) • [Architecture](#-system-architecture) • [CI/CD & Deployment](#--cicd-pipeline--vercel-deployment) • [Tech Stack](#-technology-stack) • [Quick Start](#-quick-start) • [Clinical Safety](#-clinical-safety--disclaimer)
 
 </div>
 
@@ -334,6 +335,23 @@ npm run dev
 | `GET` | `/api/sessions/:id` | Fetches full report data, biomarkers, and message history | Yes (Bearer JWT) |
 | `DELETE` | `/api/sessions/:id` | Deletes session and associated vector embeddings | Yes (Bearer JWT) |
 | `GET` | `/api/user/quota` | Checks user's daily analysis quota remaining | Yes (Bearer JWT) |
+
+---
+
+## 🔄 Automatic Deployment with Vercel (GitHub Integration)
+
+CuraLab AI uses **Vercel's Native Git Integration** for 100% automated CI/CD directly from GitHub:
+
+### How It Works:
+1. **Push to `main` (`git push origin main`)** ➔ Vercel automatically builds and deploys to your **Live Production URL**.
+2. **Pull Requests / Feature Branches** ➔ Vercel automatically spins up an isolated **Preview URL** for instant visual testing.
+
+### Quick Setup Steps:
+1. Log in to [Vercel](https://vercel.com) and click **"Add New..."** ➔ **"Project"**.
+2. Under *Import Git Repository*, select **GitHub** and install/authorize access to `rrabia133-sketch/curalab-ai`.
+3. Set **Framework Preset** to `Vite` (and Root Directory to `./client` if frontend is in a subdirectory).
+4. Add your Environment Variables in Vercel (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL`).
+5. Click **"Deploy"**. Future pushes to `main` deploy automatically!
 
 ---
 

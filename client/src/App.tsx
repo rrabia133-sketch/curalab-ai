@@ -68,7 +68,8 @@ function App() {
       formData.append("file", file);
 
       // 3. Post to Express backend
-      const response = await axios.post("http://localhost:5000/api/reports/upload", formData, {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const response = await axios.post(`${API_BASE_URL}/api/reports/upload`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
           Authorization: `Bearer ${token}`,

@@ -17,7 +17,10 @@ dotenv.config();                                    //configure dotenv
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+
+// Clean and parse CLIENT_ORIGIN (remove trailing slashes / whitespace)
+const rawOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const clientOrigins = rawOrigin.split(",").map((o) => o.trim().replace(/\/$/, ""));
 
 // Setup Multer to store uploaded files in memory
 const upload = multer({
@@ -25,10 +28,33 @@ const upload = multer({
     limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
 });
 
+// Enable CORS with full preflight support
+app.use(
+    cors({
+        origin: (origin, callback) => {
+            // Allow requests with no origin (e.g. mobile apps, curl, Postman)
+            if (!origin) return callback(null, true);
 
-//use middleware
-app.use(helmet());
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
+            const normalizedOrigin = origin.trim().replace(/\/$/, "");
+
+            if (
+                clientOrigins.includes(normalizedOrigin) ||
+                normalizedOrigin.endsWith(".vercel.app") ||
+                normalizedOrigin.includes("localhost")
+            ) {
+                return callback(null, true);
+            }
+
+            callback(new Error(`CORS blocked for origin: ${origin}`));
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    })
+);
+
+// Helmet security headers (configured not to block cross-origin API requests)
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json({ limit: "10mb" }));
 
 // Root endpoint
@@ -42,7 +68,7 @@ app.get("/", (_req: Request, res: Response) => {
             me: "/api/me (Protected - requires Bearer token)",
             upload: "/api/reports/upload (Protected - POST multipart/form-data with 'file')",
         },
-        clientUrl: CLIENT_ORIGIN,
+        allowedOrigins: clientOrigins,
     });
 });
 

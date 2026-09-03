@@ -40,6 +40,7 @@ app.get("/", (_req: Request, res: Response) => {
             health: "/health",
             dbCheck: "/api/db-check",
             me: "/api/me (Protected - requires Bearer token)",
+            upload: "/api/reports/upload (Protected - POST multipart/form-data with 'file')",
         },
         clientUrl: CLIENT_ORIGIN,
     });
@@ -124,6 +125,7 @@ app.use((req: Request, res: Response) => {
             health: "/health",
             dbCheck: "/api/db-check",
             me: "/api/me (Protected)",
+            upload: "/api/reports/upload (Protected - POST)",
         },
     });
 });

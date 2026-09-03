@@ -20,8 +20,8 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsedPdfResult> {
             throw new Error(`PDF exceeds max page limit (50 pages). This document has ${totalPages} pages.`);
         }
 
-        // 3. Extract text from all pages
-        const { text } = await extractText(uint8Array, { mergePages: true });
+        // 3. Extract text from the loaded PDF proxy
+        const { text } = await extractText(pdf, { mergePages: true });
 
         // 4. Sanitize text (normalize line endings and trim excess whitespace)
         const sanitizedText = text

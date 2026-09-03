@@ -28,25 +28,10 @@ const upload = multer({
     limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
 });
 
-// Enable CORS with full preflight support
+// Enable CORS with full preflight and origin reflection support
 app.use(
     cors({
-        origin: (origin, callback) => {
-            // Allow requests with no origin (e.g. mobile apps, curl, Postman)
-            if (!origin) return callback(null, true);
-
-            const normalizedOrigin = origin.trim().replace(/\/$/, "");
-
-            if (
-                clientOrigins.includes(normalizedOrigin) ||
-                normalizedOrigin.endsWith(".vercel.app") ||
-                normalizedOrigin.includes("localhost")
-            ) {
-                return callback(null, true);
-            }
-
-            callback(new Error(`CORS blocked for origin: ${origin}`));
-        },
+        origin: true, // Dynamically reflects request origin (allows localhost, all Vercel domains, and previews)
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],

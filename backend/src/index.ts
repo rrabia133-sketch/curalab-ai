@@ -29,14 +29,21 @@ const upload = multer({
 });
 
 // Enable CORS with full preflight and origin reflection support
-app.use(
-    cors({
-        origin: true, // Dynamically reflects request origin (allows localhost, all Vercel domains, and previews)
-        credentials: true,
-        methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-    })
-);
+const corsOptions: cors.CorsOptions = {
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl, server-to-server) or any origin (Vercel, localhost, previews)
+        callback(null, true);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+// Handle preflight requests for all routes
+app.options("*", cors(corsOptions));
 
 // Helmet security headers (configured not to block cross-origin API requests)
 app.use(helmet({ crossOriginResourcePolicy: false }));

@@ -36,7 +36,7 @@ export const AuthPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-green-950 flex items-center justify-center p-4 relative overflow-hidden" >
+        <div className="min-h-screen bg-black-950 flex items-center justify-center p-4 relative overflow-hidden" >
             <div className="absolute -top-40 -left-40 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
             <div className="max-w-md w-full bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl border border-white/30 p-8">
@@ -67,7 +67,7 @@ export const AuthPage: React.FC = () => {
 
                 <form onSubmit={handleAuth} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-1 text-white">Email</label>
+                        <label className="block text-xs font-semibold text-green-600 uppercase mb-1">Email</label>
                         <div className="relative">
                             <Mail className="w-5 h-5 text-slate-400 absolute left-3 top-3" />
                             <input
@@ -82,7 +82,7 @@ export const AuthPage: React.FC = () => {
                     </div>
 
                     <div>
-                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-1 text-white">Password</label>
+                        <label className="block text-xs font-semibold text-green-600 uppercase mb-1">Password</label>
                         <div className="relative">
                             <Lock className="w-5 h-5 text-slate-400 absolute left-3 top-3" />
                             <input

@@ -1,6 +1,7 @@
 
 import { supabaseAdmin } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
+import { extractBiomarkersFromText } from "./ai/AnalysisAgent.js";
 
 
 import express, { Request, Response } from "express";   //import express
@@ -42,8 +43,8 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
-// Handle preflight requests for all routes
-app.options("*", cors(corsOptions));
+
+
 
 // Helmet security headers (configured not to block cross-origin API requests)
 app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -132,6 +133,60 @@ app.post(
     }
 );
 
+// Complete Analysis Pipeline Endpoint (Upload -> Extract Text -> AI Biomarker Analysis -> Save to Supabase)
+app.post(
+    "/api/reports/analyze",
+    requireAuth,                  // 1. Must be logged in
+    upload.single("file"),        // 2. Expects form field 'file'
+    validatePdfFile,              // 3. Validates authentic PDF & size
+    async (req: AuthenticatedRequest, res: Response) => {
+        try {
+            const file = req.file!;
+            const userId = req.user!.id;
+            console.log(`📄 Starting analysis for file: ${file.originalname} (User: ${userId})`);
+            // Step A: Extract raw text from PDF
+            const { text, totalPages } = await parsePdfBuffer(file.buffer);
+            // Step B: Run Cascading AI Model to extract structured biomarkers
+            console.log(`🧠 Running AI biomarker extraction on ${text.length} characters...`);
+            const analysisResult = await extractBiomarkersFromText(text);
+            // Step C: Save record in Supabase database
+            const reportTitle = file.originalname.replace(/\.pdf$/i, "");
+            const { data: session, error: dbError } = await supabaseAdmin
+                .from("chat_sessions")
+                .insert({
+                    user_id: userId,
+                    report_title: reportTitle,
+                    report_text: text,
+                    analysis_result: analysisResult,
+                    status: "completed",
+                })
+                .select()
+                .single();
+            if (dbError) {
+                console.error("❌ Database save error:", dbError);
+                throw dbError;
+            }
+            console.log(`✅ Analysis complete! Saved session ID: ${session.id}`);
+            // Step D: Send back structured result
+            res.status(200).json({
+                success: true,
+                message: "Report analyzed successfully",
+                data: {
+                    sessionId: session.id,
+                    reportTitle,
+                    totalPages,
+                    analysis: analysisResult,
+                },
+            });
+        } catch (error: any) {
+            console.error("❌ Analysis Endpoint Error:", error);
+            res.status(500).json({
+                success: false,
+                error: error.message || "Failed to analyze lab report",
+            });
+        }
+    }
+);
 
 // 404 Handler for undefined routes (must be placed after all routes)
 app.use((req: Request, res: Response) => {

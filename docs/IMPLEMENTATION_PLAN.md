@@ -1761,3 +1761,8 @@ jobs:
 | **Day 7** | **7.1** | Daily Quota Guard (15/day) & Disclaimer | `server/src/middleware/quotaGuard.ts` |
 | | **7.2** | Printable Summary View | `client/src/components/analysis/PrintableReportSummary.tsx` |
 | | **7.3** | CI/CD Pipeline & Vercel Deployment | `.github/workflows/ci.yml` |
+
+
+
+
+versal  live link :  https://curalab-ai-2v6h-chi.vercel.app/

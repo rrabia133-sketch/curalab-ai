@@ -346,11 +346,10 @@ function App() {
                     return (
                       <div
                         key={idx}
-                        className={`flex items-start gap-4 px-2 py-0.5 rounded transition ${
-                          isMatched
-                            ? "bg-amber-500/20 text-amber-200 font-semibold"
-                            : "hover:bg-slate-900/60 text-slate-300"
-                        }`}
+                        className={`flex items-start gap-4 px-2 py-0.5 rounded transition ${isMatched
+                          ? "bg-amber-500/20 text-amber-200 font-semibold"
+                          : "hover:bg-slate-900/60 text-slate-300"
+                          }`}
                       >
                         <span className="w-8 text-right text-slate-600 select-none text-[11px] shrink-0">
                           {idx + 1}
@@ -366,7 +365,7 @@ function App() {
               <div className="p-4 bg-slate-900/60 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
                 <div className="flex items-center gap-2 text-emerald-400 font-medium">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Sprint 3 Complete • Ready for Sprint 4 (Structured Biomarker Extraction)</span>
+                  {/* <span>Sprint 3 Complete • Ready for Sprint 4 (Structured Biomarker Extraction)</span> */}
                 </div>
                 <span className="text-[11px] text-slate-500">
                   {textLines.length} lines parsed

@@ -21,18 +21,29 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsedPdfResult> {
         }
 
         // 3. Extract text from the loaded PDF proxy
-        const { text } = await extractText(pdf, { mergePages: true });
+        const result: any = await extractText(pdf, { mergePages: true });
+
+        let extracted = "";
+        if (typeof result?.text === "string") {
+            extracted = result.text;
+        } else if (Array.isArray(result?.text)) {
+            extracted = result.text.join("\n\n");
+        } else if (typeof result === "string") {
+            extracted = result;
+        }
 
         // 4. Sanitize text (normalize line endings and trim excess whitespace)
-        const sanitizedText = text
+        const sanitizedText = extracted
             .replace(/\r\n/g, "\n")
             .replace(/\n{3,}/g, "\n\n")
             .trim();
 
+        console.log(`📄 PDF parsed: ${totalPages} page(s), extracted ${sanitizedText.length} characters.`);
+
         // 5. Ensure the document isn't a blank or unreadable scan
-        if (!sanitizedText || sanitizedText.length < 20) {
+        if (!sanitizedText || sanitizedText.length < 10) {
             throw new Error(
-                "Extracted PDF text is too short or empty. Please ensure the document is a readable digital PDF (not a blank/blurry scanned image)."
+                "Extracted PDF text is empty or too short. This usually occurs when the PDF is a scanned photo/image rather than a digital document with selectable text. Please upload a digital PDF with readable text."
             );
         }
 
@@ -41,6 +52,6 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsedPdfResult> {
             totalPages,
         };
     } catch (error: any) {
-        throw new Error(`PDF parsing failed: ${error.message}`);
+        throw new Error(error.message);
     }
 }

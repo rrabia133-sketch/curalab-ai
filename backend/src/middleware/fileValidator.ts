@@ -23,10 +23,11 @@ export async function validatePdfFile(
             return;
         }
 
-        // 3. Inspect magic bytes to verify genuine PDF signature
+        // 3. Inspect magic bytes to verify genuine PDF signature (%PDF header or file-type detection)
         const fileType = await fileTypeFromBuffer(req.file.buffer);
+        const hasPdfMagicHeader = req.file.buffer.subarray(0, 10).toString("ascii").includes("%PDF");
 
-        if (!fileType || fileType.mime !== "application/pdf") {
+        if ((!fileType || fileType.mime !== "application/pdf") && !hasPdfMagicHeader) {
             res.status(400).json({
                 error: "Security Alert: Invalid file type. Only genuine PDF documents are supported.",
             });

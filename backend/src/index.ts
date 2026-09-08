@@ -3,7 +3,8 @@ import { supabaseAdmin } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
 import { extractBiomarkersFromText } from "./ai/AnalysisAgent.js";
 
-
+import { indexReportForRag, retrieveRelevantChunks } from "./services/ragService.js";
+import { modelManager } from "./ai/ModelManager.js";
 import express, { Request, Response } from "express";   //import express
 import cors from "cors";                                   //import cors for connecting frontend and backend
 import helmet from "helmet";                              //import helmet for security
@@ -60,6 +61,8 @@ app.get("/", (_req: Request, res: Response) => {
             dbCheck: "/api/db-check",
             me: "/api/me (Protected - requires Bearer token)",
             upload: "/api/reports/upload (Protected - POST multipart/form-data with 'file')",
+            analyze: "/api/reports/analyze (Protected - POST multipart/form-data with 'file')",
+            chatStream: "/api/chat/stream (Protected - POST SSE with sessionId & message)",
         },
         allowedOrigins: clientOrigins,
     });
@@ -167,6 +170,15 @@ app.post(
                 throw dbError;
             }
             console.log(`✅ Analysis complete! Saved session ID: ${session.id}`);
+
+            // Step C.1: Index text chunks into Supabase pgvector for semantic search (RAG)
+            try {
+                console.log(`📦 Generating pgvector embeddings for session ${session.id}...`);
+                await indexReportForRag(session.id, text);
+            } catch (indexErr) {
+                console.warn("⚠️ Vector indexing warning:", indexErr);
+            }
+
             // Step D: Send back structured result
             res.status(200).json({
                 success: true,
@@ -187,7 +199,69 @@ app.post(
         }
     }
 );
-
+// RAG Conversational Streaming Endpoint (SSE)
+app.post(
+    "/api/chat/stream",
+    requireAuth,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+        const { sessionId, message } = req.body;
+        const userId = req.user!.id;
+        if (!sessionId || !message) {
+            res.status(400).json({ error: "sessionId and message are required" });
+            return;
+        }
+        // 1. Retrieve Relevant Document Chunks via Cosine Similarity
+        const chunks = await retrieveRelevantChunks(sessionId, message, 3);
+        const contextText = chunks.length > 0
+            ? chunks.join("\n---\n")
+            : "No specific text chunks found. Answer based on general laboratory knowledge.";
+        // 2. Setup Server-Sent Events (SSE) Headers
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders?.();
+        const systemPrompt = `You are CuraLab AI, an empathetic and highly accurate clinical laboratory AI assistant.
+Answer the patient's questions based strictly on the provided lab report context.
+CONTEXT FROM LAB REPORT:
+${contextText}
+CLINICAL GUIDELINES:
+- Always cite specific biomarker values, units, and reference ranges when mentioned in the context.
+- Explain medical terms in simple, empowering, and understandable language.
+- Provide practical questions they can ask their doctor.
+- Always include an educational disclaimer that this does not substitute professional medical advice.`;
+        try {
+            // 3. Generate response using Groq / Ollama cascade
+            const fullAnswer = await modelManager.generateChatCompletion([
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message },
+            ]);
+            // 4. Stream response word-by-word over SSE
+            const words = fullAnswer.split(" ");
+            for (let i = 0; i < words.length; i++) {
+                const token = i === words.length - 1 ? words[i] : words[i] + " ";
+                res.write(`data: ${JSON.stringify({ token })}\n\n`);
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            // 5. Save message history to Supabase
+            await supabaseAdmin.from("chat_messages").insert([
+                { session_id: sessionId, role: "user", content: message },
+                {
+                    session_id: sessionId,
+                    role: "assistant",
+                    content: fullAnswer,
+                    metadata: { citations: chunks }
+                },
+            ]);
+            // 6. Signal completion
+            res.write("data: [DONE]\n\n");
+            res.end();
+        } catch (err: any) {
+            console.error("❌ Chat Stream Error:", err);
+            res.write(`data: ${JSON.stringify({ error: err.message || "Failed to generate response" })}\n\n`);
+            res.end();
+        }
+    }
+);
 // 404 Handler for undefined routes (must be placed after all routes)
 app.use((req: Request, res: Response) => {
     res.status(404).json({
@@ -199,6 +273,8 @@ app.use((req: Request, res: Response) => {
             dbCheck: "/api/db-check",
             me: "/api/me (Protected)",
             upload: "/api/reports/upload (Protected - POST)",
+            analyze: "/api/reports/analyze (Protected - POST)",
+            chatStream: "/api/chat/stream (Protected - POST SSE)",
         },
     });
 });

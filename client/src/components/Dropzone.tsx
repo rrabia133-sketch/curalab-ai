@@ -213,9 +213,17 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelect, isLoading = fa
   const validateAndPass = (file: File) => {
     setError(null);
 
-    // 1. Check if the file is a PDF
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Please select a genuine PDF report (.pdf format only).");
+    const allowedMimes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/jpg",
+    ];
+    const isAllowedExt = /\.(pdf|png|jpe?g|webp)$/i.test(file.name);
+
+    if (!allowedMimes.includes(file.type) && !isAllowedExt) {
+      setError("Please select a genuine PDF report or Lab Image (PNG, JPG, WEBP).");
       return;
     }
 
@@ -268,11 +276,10 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelect, isLoading = fa
         onDragLeave={handleDrag}
         onDrop={handleDrop}
         onClick={() => !isLoading && fileInputRef.current?.click()}
-        className={`group relative overflow-hidden rounded-3xl border-2 border-dashed p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 ${
-          isDragActive
+        className={`group relative overflow-hidden rounded-3xl border-2 border-dashed p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 ${isDragActive
             ? "border-indigo-500 bg-indigo-950/40 scale-[1.01] shadow-2xl shadow-indigo-500/20"
             : "border-slate-800 hover:border-indigo-500/60 bg-slate-900/60 hover:bg-slate-900/90 shadow-xl backdrop-blur-md"
-        } ${isLoading ? "pointer-events-none opacity-85" : ""}`}
+          } ${isLoading ? "pointer-events-none opacity-85" : ""}`}
       >
         {/* Subtle background glow effect */}
         <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none group-hover:opacity-100 transition-opacity" />
@@ -282,7 +289,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelect, isLoading = fa
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,application/pdf"
+          accept=".pdf,application/pdf,image/png,image/jpeg,image/jpg,image/webp"
           className="hidden"
           disabled={isLoading}
           onChange={(e) => {
@@ -295,15 +302,16 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelect, isLoading = fa
         <div className="relative z-10 flex flex-col items-center justify-center gap-4">
           {/* Animated Icon Avatar */}
           <div
-            className={`p-5 rounded-2xl transition-all duration-300 shadow-md ${
-              isLoading
+            className={`p-5 rounded-2xl transition-all duration-300 shadow-md ${isLoading
                 ? "bg-indigo-600 text-white animate-pulse"
+
                 : selectedFile
-                ? "bg-emerald-600 text-white scale-105 shadow-emerald-600/30"
-                : isDragActive
-                ? "bg-indigo-600 text-white scale-110 shadow-indigo-600/30"
-                : "bg-slate-800/80 text-indigo-400 border border-slate-700/60 group-hover:bg-indigo-600 group-hover:text-white group-hover:scale-105"
-            }`}
+
+                  ? "bg-emerald-600 text-white scale-105 shadow-emerald-600/30"
+                  : isDragActive
+                    ? "bg-indigo-600 text-white scale-110 shadow-indigo-600/30"
+                    : "bg-slate-800/80 text-indigo-400 border border-slate-700/60 group-hover:bg-indigo-600 group-hover:text-white group-hover:scale-105"
+              }`}
           >
             {isLoading ? (
               <Loader2 className="w-8 h-8 animate-spin" />
@@ -320,13 +328,13 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelect, isLoading = fa
               {isLoading
                 ? "Analyzing Lab Report with AI..."
                 : selectedFile
-                ? selectedFile.name
-                : "Drag & Drop your Lab Report PDF"}
+                  ? selectedFile.name
+                  : "Drag & Drop your Lab Report PDF or CBC Image"}
             </h3>
             <p className="text-xs sm:text-sm text-slate-400">
               {isLoading
                 ? "Extracting clinical panels, checking reference ranges, and generating AI insights..."
-                : "Browse from your computer or drag your digital laboratory report PDF here"}
+                : "Browse from your computer or drag your digital PDF or CBC scan/photo here"}
             </p>
           </div>
 
@@ -334,10 +342,10 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelect, isLoading = fa
           {!isLoading && !selectedFile && (
             <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                <Sparkles className="w-3 h-3 text-indigo-400" /> Digital PDF up to 20MB
+                <Sparkles className="w-3 h-3 text-indigo-400" /> PDF, PNG, JPG up to 20MB
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" /> Magic-Byte Security Verification
+                <ShieldCheck className="w-3 h-3 text-emerald-400" /> Vision AI & Magic-Byte Verification
               </span>
             </div>
           )}

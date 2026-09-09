@@ -8,7 +8,7 @@ import { quotaGuard } from "./middleware/quotaGuard.js";
 
 import { supabaseAdmin, getUserSupabaseClient } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
-import { extractBiomarkersFromText } from "./ai/AnalysisAgent.js";
+import { extractBiomarkersFromText, extractBiomarkersFromImage } from "./ai/AnalysisAgent.js";
 import { indexReportForRag, retrieveRelevantChunks, memorySessionStore } from "./services/ragService.js";
 import { modelManager } from "./ai/ModelManager.js";
 import { validatePdfFile } from "./middleware/fileValidator.js";
@@ -132,27 +132,43 @@ app.post(
     }
 );
 
-// Complete Analysis Pipeline Endpoint (Upload -> Extract Text -> AI Biomarker Analysis -> Save to DB)
+// Complete Analysis Pipeline Endpoint (Upload PDF/Image -> AI Biomarker Analysis -> Save to DB)
 app.post(
     "/api/reports/analyze",
     requireAuth,                  // 1. Must be logged in or guest
-    upload.single("file"),        // 2. Expects form field 'file'
-    validatePdfFile,              // 3. Validates authentic PDF & size
+    quotaGuard,                   // 2. Enforce 15 reports/day quota per user
+    upload.single("file"),        // 3. Expects form field 'file'
+    validatePdfFile,              // 4. Validates authentic PDF or Image & size
     async (req: AuthenticatedRequest, res: Response) => {
         try {
             const file = req.file!;
             const userId = req.user!.id;
-            console.log(`📄 Starting analysis for file: ${file.originalname} (User: ${userId})`);
+            const isImage = file.mimetype.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.originalname);
+            console.log(`📄 Starting analysis for file: ${file.originalname} (User: ${userId}, IsImage: ${isImage})`);
 
-            // Step A: Extract raw text from PDF
-            const { text, totalPages } = await parsePdfBuffer(file.buffer);
+            let text = "";
+            let totalPages = 1;
+            let analysisResult;
 
-            // Step B: Run Cascading AI Model to extract structured biomarkers
-            console.log(`🧠 Running AI biomarker extraction on ${text.length} characters...`);
-            const analysisResult = await extractBiomarkersFromText(text);
+            if (isImage) {
+                // Step A: Extract biomarkers from image using Vision AI
+                console.log(`👁️ Running Vision AI biomarker extraction on ${file.mimetype}...`);
+                analysisResult = await extractBiomarkersFromImage(file.buffer, file.mimetype);
+                text = `[LAB REPORT IMAGE: ${file.originalname}]\nClinical Summary: ${analysisResult.reportSummary}\nBiomarkers:\n` +
+                    analysisResult.biomarkers.map((b: any) => `- ${b.name}: ${b.value} ${b.unit || ""} (Status: ${b.status}, Reference: ${b.referenceRange || "N/A"})`).join("\n");
+            } else {
+                // Step A: Extract raw text from PDF
+                const pdfData = await parsePdfBuffer(file.buffer);
+                text = pdfData.text;
+                totalPages = pdfData.totalPages;
+
+                // Step B: Run Cascading AI Model to extract structured biomarkers
+                console.log(`🧠 Running AI biomarker extraction on ${text.length} characters...`);
+                analysisResult = await extractBiomarkersFromText(text);
+            }
 
             // Step C: Save record
-            const reportTitle = file.originalname.replace(/\.pdf$/i, "");
+            const reportTitle = file.originalname.replace(/\.(pdf|png|jpe?g|webp)$/i, "");
             let sessionId = crypto.randomUUID();
 
             // Store in memory session store first (always succeeds)
@@ -292,17 +308,6 @@ CLINICAL GUIDELINES:
             res.write(`data: ${JSON.stringify({ error: err.message || "Failed to generate response" })}\n\n`);
             res.end();
         }
-    }
-);
-// endind rag
-app.post(
-    "/api/reports/analyze",
-    requireAuth,        // 1. Must be authenticated or demo user
-    quotaGuard,         // 2. Enforces 15 reports/day quota
-    upload.single("file"),
-    validatePdfFile,
-    async (req: AuthenticatedRequest, res: Response) => {
-        // ... existing analysis logic
     }
 );
 

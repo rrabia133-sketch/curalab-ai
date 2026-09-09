@@ -5,7 +5,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { Dropzone } from "./components/Dropzone";
 import { supabase } from "./lib/supabase";
 import { BiomarkerCard, type Biomarker } from "./components/analysis/BiomarkerCard";
-// import { MedicalDisclaimer } from "./components/layout/MedicalDisclaimer";
+import { MedicalDisclaimer } from "./components/layout/MedicalDisclaimer";
 
 import { DoctorQuestionsCard } from "./components/analysis/DoctorQuestionsCard";
 import { ChatDrawer } from "./components/chat/ChatDrawer";
@@ -224,9 +224,11 @@ function App() {
           </button>
         </div>
       </header>
-      {/* <MedicalDisclaimer className="mb-6" /> */}
+
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        <MedicalDisclaimer className="mb-6" />
+
         {/* Upload State */}
         {!analysisData ? (
           <div className="max-w-3xl mx-auto space-y-6 pt-4 sm:pt-8">

@@ -87,3 +87,83 @@ CRITICAL RULES:
         throw new Error(`Failed to validate AI extraction result: ${err.message}`);
     }
 }
+
+/**
+ * Extracts structured biomarker panels and clinical insights from a CBC / Lab report image using Vision AI.
+ */
+export async function extractBiomarkersFromImage(
+    imageBuffer: Buffer,
+    mimeType: string
+): Promise<AnalysisResult> {
+    const base64 = imageBuffer.toString("base64");
+    const prompt = `You are CuraLab AI, an expert clinical pathologist.
+Carefully examine this laboratory report image (e.g. Complete Blood Count / CBC test slip, Metabolic panel, or blood work scan).
+Extract all structured biomarkers visible in the image and return ONLY a valid JSON object strictly matching this schema:
+
+{
+  "reportSummary": "2-3 sentence executive clinical summary of findings from this image.",
+  "patientContext": {
+    "patientName": "Patient name or null if not visible",
+    "age": 45,
+    "gender": "Male or Female or null",
+    "collectionDate": "Date or null"
+  },
+  "biomarkers": [
+    {
+      "name": "Biomarker Name (e.g. Hemoglobin, WBC, Platelets, RBC, Hematocrit, Glucose, etc.)",
+      "value": 14.2,
+      "unit": "g/dL",
+      "referenceRange": "13.5 - 17.5",
+      "status": "NORMAL",
+      "clinicalSignificance": "Brief 1-sentence explanation.",
+      "category": "Complete Blood Count (CBC)"
+    }
+  ],
+  "criticalAlerts": ["Any urgent critical abnormal findings"],
+  "doctorDiscussionQuestions": [
+    "3-5 thoughtful consultation questions for their physician"
+  ],
+  "criticalFlagsCount": 0
+}
+
+CRITICAL RULES:
+- Read every visible biomarker row in the test slip table.
+- Strictly set status to one of: "NORMAL", "LOW", "HIGH", "CRITICAL", "BORDERLINE".
+- Extract numeric value (or null if non-numeric).
+- Always return valid JSON only.`;
+
+    const rawResponse = await modelManager.generateVisionCompletion(base64, mimeType, prompt);
+
+    let cleaned = rawResponse.trim();
+    cleaned = cleaned.replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+
+    try {
+        const jsonParsed = JSON.parse(cleaned);
+
+        if (Array.isArray(jsonParsed.categories) && (!jsonParsed.biomarkers || jsonParsed.biomarkers.length === 0)) {
+            const flattened: any[] = [];
+            for (const cat of jsonParsed.categories) {
+                if (Array.isArray(cat.biomarkers)) {
+                    for (const b of cat.biomarkers) {
+                        flattened.push({
+                            ...b,
+                            category: b.category || cat.categoryName || "Complete Blood Count (CBC)",
+                        });
+                    }
+                }
+            }
+            jsonParsed.biomarkers = flattened;
+        }
+
+        if (!jsonParsed.doctorDiscussionQuestions && Array.isArray(jsonParsed.doctorQuestions)) {
+            jsonParsed.doctorDiscussionQuestions = jsonParsed.doctorQuestions;
+        }
+
+        const validatedResult = AnalysisResultSchema.parse(jsonParsed);
+        return validatedResult;
+    } catch (err: any) {
+        console.error("❌ Image Schema validation or JSON parse error:", err);
+        throw new Error(`Failed to validate Vision AI extraction result: ${err.message}`);
+    }
+}
+

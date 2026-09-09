@@ -4,8 +4,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-let supabaseUrl = (process.env.SUPABASE_URL || "").trim();
-const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+let supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
 if (!supabaseUrl || !supabaseServiceKey) {
     console.warn("⚠️ Warning: Missing Supabase credentials in backend/.env");

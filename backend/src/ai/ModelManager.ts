@@ -6,6 +6,8 @@ dotenv.config();
 // Ordered list of Groq models to try (from smartest to fastest)
 const GROQ_MODELS = [
     "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "openai/gpt-oss-20b",
     "groq/compound",
     "groq/compound-mini",
@@ -21,21 +23,29 @@ const GROQ_VISION_MODELS = [
 
 export class ModelManager {
     private groq: Groq | null = null;
-    private ollamaBaseUrl: string;
-    private ollamaModel: string;
-    private enableOllama: boolean;
+    private ollamaBaseUrl: string = "http://localhost:11434";
+    private ollamaModel: string = "llama3.1:8b";
+    private enableOllama: boolean = false;
 
     constructor() {
-        // 1. Initialize Groq SDK if a valid API key exists in .env
-        const rawApiKey = (process.env.GROQ_API_KEY || "").trim().replace(/^["']|["']$/g, "");
-        if (rawApiKey && !rawApiKey.includes("your_groq_api_key")) {
-            this.groq = new Groq({ apiKey: rawApiKey });
-        }
+        this.initSettings();
+    }
 
-        // 2. Configure local Ollama settings from .env
+    private initSettings() {
         this.ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
         this.ollamaModel = process.env.OLLAMA_MODEL || "llama3.1:8b";
         this.enableOllama = process.env.ENABLE_OLLAMA_FALLBACK === "true";
+    }
+
+    private getGroq(): Groq | null {
+        const rawApiKey = (process.env.GROQ_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+        if (rawApiKey && !rawApiKey.includes("your_groq_api_key")) {
+            if (!this.groq) {
+                this.groq = new Groq({ apiKey: rawApiKey });
+            }
+            return this.groq;
+        }
+        return null;
     }
 
     /**
@@ -46,13 +56,16 @@ export class ModelManager {
         temperature: number = 0.1,
         jsonMode: boolean = false
     ): Promise<string> {
+        this.initSettings();
+        const groqClient = this.getGroq();
+        const errorLogs: string[] = [];
 
         // Tier 1: Try Groq Cloud models in order
-        if (this.groq) {
+        if (groqClient) {
             for (const model of GROQ_MODELS) {
                 try {
                     console.log(`🤖 Trying Groq model: ${model}...`);
-                    const response = await this.groq.chat.completions.create({
+                    const response = await groqClient.chat.completions.create({
                         model,
                         messages,
                         temperature,
@@ -66,11 +79,14 @@ export class ModelManager {
                         return content;
                     }
                 } catch (err: any) {
-                    console.warn(`⚠️ Groq model ${model} failed (${err.status || err.name}): ${err.message}. Cascading to next model...`);
+                    const msg = `${model} error: ${err.message || err.status || "failed"}`;
+                    console.warn(`⚠️ Groq model ${msg}. Cascading...`);
+                    errorLogs.push(msg);
                 }
             }
         } else {
-            console.warn("⚠️ No GROQ_API_KEY found in backend/.env. Skipping Groq cloud models.");
+            console.warn("⚠️ No GROQ_API_KEY found. Skipping Groq cloud models.");
+            errorLogs.push("GROQ_API_KEY is missing or empty in environment");
         }
 
         // Tier 2: Fallback to local Ollama if enabled
@@ -103,11 +119,12 @@ export class ModelManager {
                 }
             } catch (ollamaErr: any) {
                 console.error("❌ Ollama fallback failed:", ollamaErr.message);
+                errorLogs.push(`Ollama: ${ollamaErr.message}`);
             }
         }
 
-        // If both Groq and Ollama failed
-        throw new Error("All AI models in cascade exhausted. Please verify your GROQ_API_KEY or Ollama setup.");
+        // If all models failed
+        throw new Error(`AI Extraction Failure: ${errorLogs.join(" | ")}`);
     }
 
     /**

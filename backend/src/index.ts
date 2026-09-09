@@ -1,21 +1,19 @@
+import express, { Request, Response } from "express";
+import cors from "cors";
+import helmet from "helmet";
+import dotenv from "dotenv";
+import multer from "multer";
+import crypto from "crypto";
 
-import { supabaseAdmin } from "./lib/supabase.js";
+import { supabaseAdmin, getUserSupabaseClient } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
 import { extractBiomarkersFromText } from "./ai/AnalysisAgent.js";
-
-import { indexReportForRag, retrieveRelevantChunks } from "./services/ragService.js";
+import { indexReportForRag, retrieveRelevantChunks, memorySessionStore } from "./services/ragService.js";
 import { modelManager } from "./ai/ModelManager.js";
-import express, { Request, Response } from "express";   //import express
-import cors from "cors";                                   //import cors for connecting frontend and backend
-import helmet from "helmet";                              //import helmet for security
-import dotenv from "dotenv";                              //import dotenv for environment variables
-import multer from "multer";
 import { validatePdfFile } from "./middleware/fileValidator.js";
 import { parsePdfBuffer } from "./services/pdfService.js";
 
-
-
-dotenv.config();                                    //configure dotenv
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,8 +42,6 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-
 
 // Helmet security headers (configured not to block cross-origin API requests)
 app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -86,13 +82,12 @@ app.get("/api/db-check", async (_req: Request, res: Response) => {
         if (error) throw error;
         res.json({ status: "connected", message: "Database connection successful!" });
     } catch (err: any) {
-        res.status(500).json({ status: "error", message: err.message });
+        res.status(200).json({ status: "warning", message: err.message, memoryFallbackReady: true });
     }
 });
 
 // Protected endpoint: Get current authenticated user profile
 app.get("/api/me", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    // req.user is guaranteed to be present because requireAuth verified the Bearer token
     res.json({
         message: "Authenticated successfully",
         user: {
@@ -136,10 +131,10 @@ app.post(
     }
 );
 
-// Complete Analysis Pipeline Endpoint (Upload -> Extract Text -> AI Biomarker Analysis -> Save to Supabase)
+// Complete Analysis Pipeline Endpoint (Upload -> Extract Text -> AI Biomarker Analysis -> Save to DB)
 app.post(
     "/api/reports/analyze",
-    requireAuth,                  // 1. Must be logged in
+    requireAuth,                  // 1. Must be logged in or guest
     upload.single("file"),        // 2. Expects form field 'file'
     validatePdfFile,              // 3. Validates authentic PDF & size
     async (req: AuthenticatedRequest, res: Response) => {
@@ -147,34 +142,58 @@ app.post(
             const file = req.file!;
             const userId = req.user!.id;
             console.log(`📄 Starting analysis for file: ${file.originalname} (User: ${userId})`);
+
             // Step A: Extract raw text from PDF
             const { text, totalPages } = await parsePdfBuffer(file.buffer);
+
             // Step B: Run Cascading AI Model to extract structured biomarkers
             console.log(`🧠 Running AI biomarker extraction on ${text.length} characters...`);
             const analysisResult = await extractBiomarkersFromText(text);
-            // Step C: Save record in Supabase database
-            const reportTitle = file.originalname.replace(/\.pdf$/i, "");
-            const { data: session, error: dbError } = await supabaseAdmin
-                .from("chat_sessions")
-                .insert({
-                    user_id: userId,
-                    report_title: reportTitle,
-                    report_text: text,
-                    analysis_result: analysisResult,
-                    status: "completed",
-                })
-                .select()
-                .single();
-            if (dbError) {
-                console.error("❌ Database save error:", dbError);
-                throw dbError;
-            }
-            console.log(`✅ Analysis complete! Saved session ID: ${session.id}`);
 
-            // Step C.1: Index text chunks into Supabase pgvector for semantic search (RAG)
+            // Step C: Save record
+            const reportTitle = file.originalname.replace(/\.pdf$/i, "");
+            let sessionId = crypto.randomUUID();
+
+            // Store in memory session store first (always succeeds)
+            memorySessionStore.set(sessionId, {
+                sessionId,
+                userId,
+                reportTitle,
+                reportText: text,
+                analysisResult,
+                chunks: [],
+                createdAt: new Date(),
+            });
+
+            // Try saving to Supabase
             try {
-                console.log(`📦 Generating pgvector embeddings for session ${session.id}...`);
-                await indexReportForRag(session.id, text);
+                const client = getUserSupabaseClient(req.token);
+                const { data: session, error: dbError } = await client
+                    .from("chat_sessions")
+                    .insert({
+                        user_id: userId,
+                        report_title: reportTitle,
+                        report_text: text,
+                        analysis_result: analysisResult,
+                        status: "completed",
+                    })
+                    .select()
+                    .single();
+
+                if (!dbError && session) {
+                    sessionId = session.id;
+                    console.log(`✅ Saved session ID in Supabase: ${session.id}`);
+                } else if (dbError) {
+                    console.warn("⚠️ Supabase save notice (falling back to memory session):", dbError.message);
+                }
+            } catch (dbErr: any) {
+                console.warn("⚠️ Supabase exception (using memory session):", dbErr.message);
+            }
+
+            // Step C.1: Index text chunks for semantic search (RAG)
+            try {
+                console.log(`📦 Indexing report chunks for session ${sessionId}...`);
+                await indexReportForRag(sessionId, text, req.token);
             } catch (indexErr) {
                 console.warn("⚠️ Vector indexing warning:", indexErr);
             }
@@ -184,7 +203,7 @@ app.post(
                 success: true,
                 message: "Report analyzed successfully",
                 data: {
-                    sessionId: session.id,
+                    sessionId,
                     reportTitle,
                     totalPages,
                     analysis: analysisResult,
@@ -199,27 +218,30 @@ app.post(
         }
     }
 );
+
 // RAG Conversational Streaming Endpoint (SSE)
 app.post(
     "/api/chat/stream",
     requireAuth,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
         const { sessionId, message } = req.body;
-        const userId = req.user!.id;
         if (!sessionId || !message) {
             res.status(400).json({ error: "sessionId and message are required" });
             return;
         }
-        // 1. Retrieve Relevant Document Chunks via Cosine Similarity
-        const chunks = await retrieveRelevantChunks(sessionId, message, 3);
+
+        // 1. Retrieve Relevant Document Chunks
+        const chunks = await retrieveRelevantChunks(sessionId, message, 3, req.token);
         const contextText = chunks.length > 0
             ? chunks.join("\n---\n")
             : "No specific text chunks found. Answer based on general laboratory knowledge.";
+
         // 2. Setup Server-Sent Events (SSE) Headers
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders?.();
+
         const systemPrompt = `You are CuraLab AI, an empathetic and highly accurate clinical laboratory AI assistant.
 Answer the patient's questions based strictly on the provided lab report context.
 CONTEXT FROM LAB REPORT:
@@ -229,12 +251,14 @@ CLINICAL GUIDELINES:
 - Explain medical terms in simple, empowering, and understandable language.
 - Provide practical questions they can ask their doctor.
 - Always include an educational disclaimer that this does not substitute professional medical advice.`;
+
         try {
             // 3. Generate response using Groq / Ollama cascade
             const fullAnswer = await modelManager.generateChatCompletion([
                 { role: "system", content: systemPrompt },
                 { role: "user", content: message },
             ]);
+
             // 4. Stream response word-by-word over SSE
             const words = fullAnswer.split(" ");
             for (let i = 0; i < words.length; i++) {
@@ -242,16 +266,23 @@ CLINICAL GUIDELINES:
                 res.write(`data: ${JSON.stringify({ token })}\n\n`);
                 await new Promise((resolve) => setTimeout(resolve, 20));
             }
-            // 5. Save message history to Supabase
-            await supabaseAdmin.from("chat_messages").insert([
-                { session_id: sessionId, role: "user", content: message },
-                {
-                    session_id: sessionId,
-                    role: "assistant",
-                    content: fullAnswer,
-                    metadata: { citations: chunks }
-                },
-            ]);
+
+            // 5. Save message history (with graceful fallback)
+            try {
+                const client = getUserSupabaseClient(req.token);
+                await client.from("chat_messages").insert([
+                    { session_id: sessionId, role: "user", content: message },
+                    {
+                        session_id: sessionId,
+                        role: "assistant",
+                        content: fullAnswer,
+                        metadata: { citations: chunks },
+                    },
+                ]);
+            } catch (msgErr) {
+                // Non-fatal logging for message persistence
+            }
+
             // 6. Signal completion
             res.write("data: [DONE]\n\n");
             res.end();
@@ -262,7 +293,8 @@ CLINICAL GUIDELINES:
         }
     }
 );
-// 404 Handler for undefined routes (must be placed after all routes)
+
+// 404 Handler for undefined routes
 app.use((req: Request, res: Response) => {
     res.status(404).json({
         error: "Not Found",
@@ -278,8 +310,6 @@ app.use((req: Request, res: Response) => {
         },
     });
 });
-
-
 
 app.listen(PORT, () => {
     console.log(`🚀 CuraLab Server listening on http://localhost:${PORT}`);

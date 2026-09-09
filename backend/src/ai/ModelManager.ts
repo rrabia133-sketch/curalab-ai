@@ -6,9 +6,12 @@ dotenv.config();
 // Ordered list of Groq models to try (from smartest to fastest)
 
 const GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768"
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "groq/compound",
+    "groq/compound-mini",
+    "qwen/qwen3.6-27b",
+    "qwen/qwen3.8-27b"
 ];
 
 export class ModelManager {
@@ -18,9 +21,10 @@ export class ModelManager {
     private enableOllama: boolean;
 
     constructor() {
-        // 1. Initialize Groq SDK if an API key exists in .env
-        if (process.env.GROQ_API_KEY) {
-            this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        // 1. Initialize Groq SDK if a valid API key exists in .env
+        const rawApiKey = (process.env.GROQ_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+        if (rawApiKey && !rawApiKey.includes("your_groq_api_key")) {
+            this.groq = new Groq({ apiKey: rawApiKey });
         }
 
         // 2. Configure local Ollama settings from .env
@@ -50,15 +54,18 @@ export class ModelManager {
                         response_format: jsonMode ? { type: "json_object" } : undefined,
                     });
 
-                    const content = response.choices[0]?.message?.content;
+                    let content = response.choices[0]?.message?.content;
                     if (content) {
+                        content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
                         console.log(`✅ Success with Groq model: ${model}`);
                         return content;
                     }
                 } catch (err: any) {
-                    console.warn(`⚠️ Groq model ${model} failed: ${err.message}. Cascading to next model...`);
+                    console.warn(`⚠️ Groq model ${model} failed (${err.status || err.name}): ${err.message}. Cascading to next model...`);
                 }
             }
+        } else {
+            console.warn("⚠️ No GROQ_API_KEY found in backend/.env. Skipping Groq cloud models.");
         }
 
         // Tier 2: Fallback to local Ollama if enabled

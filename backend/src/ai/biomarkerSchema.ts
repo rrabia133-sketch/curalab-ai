@@ -1,36 +1,41 @@
 import { z } from "zod";
 
-// 1. Schema for an individual lab test metric (e.g., Hemoglobin)
+// 1. Schema for an individual lab test metric
 export const BiomarkerItemSchema = z.object({
-    name: z.string().describe("Biomarker name, e.g., 'Fasting Blood Glucose'"),
-    value: z.number().nullable().describe("Extracted numeric value, or null if non-numeric"),
-    unit: z.string().default("").describe("Measurement unit, e.g., 'mg/dL', 'g/dL', '%'"),
-    referenceRange: z.string().default("").describe("Normal reference interval, e.g., '70 - 99'"),
-    status: z.enum(["NORMAL", "LOW", "HIGH", "CRITICAL", "BORDERLINE"]).describe("Clinical status classification"),
-    clinicalSignificance: z.string().describe("Brief 1-sentence plain-English explanation of what this result means"),
+    name: z.string(),
+    value: z.union([z.number(), z.string().transform((val) => {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? null : parsed;
+    })]).nullable().optional().default(null),
+    unit: z.string().optional().default(""),
+    referenceRange: z.union([
+        z.string(),
+        z.object({}).passthrough().transform((obj) => JSON.stringify(obj))
+    ]).optional().default("Standard"),
+    status: z.enum(["NORMAL", "LOW", "HIGH", "CRITICAL", "BORDERLINE"]).optional().default("NORMAL"),
+    clinicalSignificance: z.string().optional().default("Clinical parameter evaluated against standard laboratory ranges."),
+    category: z.string().optional().default("General"),
 });
 
-// 2. Schema for a group of related tests (e.g., Complete Blood Count, Lipid Panel)
-export const BiomarkerCategorySchema = z.object({
-    categoryName: z.string().describe("Category header, e.g., 'Complete Blood Count (CBC)'"),
-    biomarkers: z.array(BiomarkerItemSchema),
-});
-
-// 3. Root Schema for the entire clinical analysis
+// 2. Root Schema for the entire clinical analysis
 export const AnalysisResultSchema = z.object({
-    reportSummary: z.string().describe("A concise 2-3 sentence executive summary of the patient's lab report findings"),
-    patientOverview: z.object({
-        name: z.string().nullable().optional(),
-        age: z.string().nullable().optional(),
-        gender: z.string().nullable().optional(),
-        collectionDate: z.string().nullable().optional(),
+    reportSummary: z.string().default("Clinical laboratory report analyzed."),
+    patientContext: z.object({
+        patientName: z.string().nullable().optional().default(null),
+        age: z.union([z.string(), z.number()]).nullable().optional().default(null),
+        gender: z.string().nullable().optional().default(null),
+        collectionDate: z.string().nullable().optional().default(null),
+    }).optional().default({
+        patientName: null,
+        age: null,
+        gender: null,
+        collectionDate: null,
     }),
-    categories: z.array(BiomarkerCategorySchema),
-    doctorQuestions: z.array(z.string()).describe("3-5 tailored clinical consultation questions for the patient's doctor"),
-    criticalFlagsCount: z.number().describe("Total count of abnormal biomarkers (LOW, HIGH, CRITICAL, BORDERLINE)"),
+    biomarkers: z.array(BiomarkerItemSchema).default([]),
+    criticalAlerts: z.array(z.string()).optional().default([]),
+    doctorDiscussionQuestions: z.array(z.string()).default([]),
+    criticalFlagsCount: z.number().optional().default(0),
 });
 
-// TypeScript type definitions derived automatically from the Zod schemas
 export type BiomarkerItem = z.infer<typeof BiomarkerItemSchema>;
-export type BiomarkerCategory = z.infer<typeof BiomarkerCategorySchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;

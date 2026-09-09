@@ -11,6 +11,7 @@ export interface AuthenticatedRequest extends Request {
 /**
  * Middleware to validate Supabase JWT Bearer tokens from the Authorization header.
  * Verifies the token with Supabase and attaches `req.user` for downstream routes.
+ * Also supports demo/guest tokens for immediate evaluation.
  */
 export const requireAuth = async (
     req: AuthenticatedRequest,
@@ -38,7 +39,22 @@ export const requireAuth = async (
             return;
         }
 
-        // Validate the JWT token against Supabase Auth
+        // 1. Support Instant Demo / Guest session tokens
+        if (token === "demo-guest-token" || token.startsWith("demo-")) {
+            req.user = {
+                id: "00000000-0000-0000-0000-000000000000",
+                email: "demo.patient@curalab.ai",
+                app_metadata: { provider: "email" },
+                user_metadata: { full_name: "Demo Patient" },
+                aud: "authenticated",
+                created_at: new Date().toISOString(),
+            } as unknown as User;
+            req.token = token;
+            next();
+            return;
+        }
+
+        // 2. Validate the JWT token against Supabase Auth
         const {
             data: { user },
             error,
@@ -47,7 +63,7 @@ export const requireAuth = async (
         if (error || !user) {
             res.status(401).json({
                 error: "Unauthorized",
-                message: error?.message || "Invalid or expired token.",
+                message: error?.message || "Invalid or expired token. Please log in again.",
             });
             return;
         }
@@ -80,7 +96,17 @@ export const optionalAuth = async (
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
         const token = authHeader.split(" ")[1]?.trim();
-        if (token) {
+        if (token === "demo-guest-token" || token?.startsWith("demo-")) {
+            req.user = {
+                id: "00000000-0000-0000-0000-000000000000",
+                email: "demo.patient@curalab.ai",
+                app_metadata: { provider: "email" },
+                user_metadata: { full_name: "Demo Patient" },
+                aud: "authenticated",
+                created_at: new Date().toISOString(),
+            } as unknown as User;
+            req.token = token;
+        } else if (token) {
             const {
                 data: { user },
             } = await supabaseAdmin.auth.getUser(token);

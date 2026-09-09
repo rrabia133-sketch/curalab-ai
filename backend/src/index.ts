@@ -151,11 +151,11 @@ app.post(
             let analysisResult;
 
             if (isImage) {
-                // Step A: Extract biomarkers from image using Vision AI
-                console.log(`👁️ Running Vision AI biomarker extraction on ${file.mimetype}...`);
-                analysisResult = await extractBiomarkersFromImage(file.buffer, file.mimetype);
-                text = `[LAB REPORT IMAGE: ${file.originalname}]\nClinical Summary: ${analysisResult.reportSummary}\nBiomarkers:\n` +
-                    analysisResult.biomarkers.map((b: any) => `- ${b.name}: ${b.value} ${b.unit || ""} (Status: ${b.status}, Reference: ${b.referenceRange || "N/A"})`).join("\n");
+                // Step A: Extract biomarkers from image using OCR + AI
+                console.log(`🖼️ Running OCR & AI biomarker extraction on ${file.mimetype}...`);
+                const imgResult = await extractBiomarkersFromImage(file.buffer, file.mimetype);
+                text = imgResult.text;
+                analysisResult = imgResult.analysis;
             } else {
                 // Step A: Extract raw text from PDF
                 const pdfData = await parsePdfBuffer(file.buffer);

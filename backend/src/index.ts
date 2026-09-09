@@ -4,6 +4,7 @@ import helmet from "helmet";
 import dotenv from "dotenv";
 import multer from "multer";
 import crypto from "crypto";
+import { quotaGuard } from "./middleware/quotaGuard.js";
 
 import { supabaseAdmin, getUserSupabaseClient } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
@@ -291,6 +292,17 @@ CLINICAL GUIDELINES:
             res.write(`data: ${JSON.stringify({ error: err.message || "Failed to generate response" })}\n\n`);
             res.end();
         }
+    }
+);
+// endind rag
+app.post(
+    "/api/reports/analyze",
+    requireAuth,        // 1. Must be authenticated or demo user
+    quotaGuard,         // 2. Enforces 15 reports/day quota
+    upload.single("file"),
+    validatePdfFile,
+    async (req: AuthenticatedRequest, res: Response) => {
+        // ... existing analysis logic
     }
 );
 

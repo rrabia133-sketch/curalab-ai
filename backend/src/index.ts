@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import multer from "multer";
 import crypto from "crypto";
 import { quotaGuard } from "./middleware/quotaGuard.js";
+import { requestLogger } from "./middleware/requestLogger.js";
 
 import { supabaseAdmin, getUserSupabaseClient } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
@@ -37,8 +38,8 @@ const corsOptions: cors.CorsOptions = {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
-    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-Correlation-ID"],
+    exposedHeaders: ["Content-Range", "X-Content-Range", "X-Correlation-ID"],
     optionsSuccessStatus: 204,
 };
 
@@ -47,7 +48,7 @@ app.use(cors(corsOptions));
 // Helmet security headers (configured not to block cross-origin API requests)
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json({ limit: "10mb" }));
-
+app.use(requestLogger);
 // Root endpoint
 app.get("/", (_req: Request, res: Response) => {
     res.json({

@@ -15,7 +15,9 @@ export const BiomarkerItemSchema = z.object({
     status: z.enum(["NORMAL", "LOW", "HIGH", "CRITICAL", "BORDERLINE"]).optional().default("NORMAL"),
     clinicalSignificance: z.string().optional().default("Clinical parameter evaluated against standard laboratory ranges."),
     category: z.string().optional().default("General"),
+    isVerifiedInSource: z.boolean().optional().default(true),
 });
+
 
 // 2. Root Schema for the entire clinical analysis
 export const AnalysisResultSchema = z.object({

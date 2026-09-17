@@ -6,6 +6,7 @@ import multer from "multer";
 import crypto from "crypto";
 import { quotaGuard } from "./middleware/quotaGuard.js";
 import { requestLogger } from "./middleware/requestLogger.js";
+import { validatePromptSafety } from "./middleware/promptGuard.js";
 
 import { supabaseAdmin, getUserSupabaseClient } from "./lib/supabase.js";
 import { requireAuth, AuthenticatedRequest } from "./middleware/auth.js";
@@ -238,30 +239,34 @@ app.post(
 );
 
 // RAG Conversational Streaming Endpoint (SSE)
-app.post(
-    "/api/chat/stream",
-    requireAuth,
-    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-        const { sessionId, message } = req.body;
-        if (!sessionId || !message) {
-            res.status(400).json({ error: "sessionId and message are required" });
-            return;
-        }
+app.post("/api/chat/stream", requireAuth, validatePromptSafety, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const { sessionId, message } = req.body;
+    if (!sessionId || !message) {
+        res.status(400).json({ error: "sessionId and message are required" });
+        return;
+    }
 
-        // 1. Retrieve Relevant Document Chunks
-        const chunks = await retrieveRelevantChunks(sessionId, message, 3, req.token);
-        const contextText = chunks.length > 0
-            ? chunks.join("\n---\n")
-            : "No specific text chunks found. Answer based on general laboratory knowledge.";
+    // 1. Retrieve Relevant Document Chunks
+    const chunks = await retrieveRelevantChunks(sessionId, message, 3, req.token);
+    const contextText = chunks.length > 0
+        ? chunks.join("\n---\n")
+        : "No specific text chunks found. Answer based on general laboratory knowledge.";
 
-        // 2. Setup Server-Sent Events (SSE) Headers
-        res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
-        res.flushHeaders?.();
+    // 2. Setup Server-Sent Events (SSE) Headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
 
-        const systemPrompt = `You are CuraLab AI, an empathetic and highly accurate clinical laboratory AI assistant.
-Answer the patient's questions based strictly on the provided lab report context.
+    const systemPrompt = `You are CuraLab AI, an empathetic, highly accurate clinical laboratory AI assistant.
+Answer the patient's questions strictly grounded in the provided lab report context.
+CRITICAL CLINICAL & ANTI-HALLUCINATION GUIDELINES:
+1. Grounding Rule: Answer strictly using facts, biomarkers, and numbers found in the CONTEXT below.
+2. Refusal Policy: If the user asks about a test, disease, or finding NOT mentioned in the context, politely state: "I cannot find information regarding this in your uploaded laboratory report. Please consult your physician for clinical evaluation." Do NOT guess or fabricate data.
+3. Always cite specific biomarker values, units, and reference ranges when mentioned in the context.
+4. Explain medical terms in simple, empowering, and understandable language.
+5. Provide practical questions they can ask their doctor.
+6. Always include an educational disclaimer that this does not substitute professional medical advice.
 CONTEXT FROM LAB REPORT:
 ${contextText}
 CLINICAL GUIDELINES:
@@ -270,46 +275,46 @@ CLINICAL GUIDELINES:
 - Provide practical questions they can ask their doctor.
 - Always include an educational disclaimer that this does not substitute professional medical advice.`;
 
-        try {
-            // 3. Generate response using Groq / Ollama cascade
-            const fullAnswer = await modelManager.generateChatCompletion([
-                { role: "system", content: systemPrompt },
-                { role: "user", content: message },
-            ]);
+    try {
+        // 3. Generate response using Groq / Ollama cascade
+        const fullAnswer = await modelManager.generateChatCompletion([
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message },
+        ]);
 
-            // 4. Stream response word-by-word over SSE
-            const words = fullAnswer.split(" ");
-            for (let i = 0; i < words.length; i++) {
-                const token = i === words.length - 1 ? words[i] : words[i] + " ";
-                res.write(`data: ${JSON.stringify({ token })}\n\n`);
-                await new Promise((resolve) => setTimeout(resolve, 20));
-            }
-
-            // 5. Save message history (with graceful fallback)
-            try {
-                const client = getUserSupabaseClient(req.token);
-                await client.from("chat_messages").insert([
-                    { session_id: sessionId, role: "user", content: message },
-                    {
-                        session_id: sessionId,
-                        role: "assistant",
-                        content: fullAnswer,
-                        metadata: { citations: chunks },
-                    },
-                ]);
-            } catch (msgErr) {
-                // Non-fatal logging for message persistence
-            }
-
-            // 6. Signal completion
-            res.write("data: [DONE]\n\n");
-            res.end();
-        } catch (err: any) {
-            console.error("❌ Chat Stream Error:", err);
-            res.write(`data: ${JSON.stringify({ error: err.message || "Failed to generate response" })}\n\n`);
-            res.end();
+        // 4. Stream response word-by-word over SSE
+        const words = fullAnswer.split(" ");
+        for (let i = 0; i < words.length; i++) {
+            const token = i === words.length - 1 ? words[i] : words[i] + " ";
+            res.write(`data: ${JSON.stringify({ token })}\n\n`);
+            await new Promise((resolve) => setTimeout(resolve, 20));
         }
+
+        // 5. Save message history (with graceful fallback)
+        try {
+            const client = getUserSupabaseClient(req.token);
+            await client.from("chat_messages").insert([
+                { session_id: sessionId, role: "user", content: message },
+                {
+                    session_id: sessionId,
+                    role: "assistant",
+                    content: fullAnswer,
+                    metadata: { citations: chunks },
+                },
+            ]);
+        } catch (msgErr) {
+            // Non-fatal logging for message persistence
+        }
+
+        // 6. Signal completion
+        res.write("data: [DONE]\n\n");
+        res.end();
+    } catch (err: any) {
+        console.error("❌ Chat Stream Error:", err);
+        res.write(`data: ${JSON.stringify({ error: err.message || "Failed to generate response" })}\n\n`);
+        res.end();
     }
+}
 );
 
 // 404 Handler for undefined routes

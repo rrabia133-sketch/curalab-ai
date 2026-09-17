@@ -1,5 +1,7 @@
 // backend/src/services/pdfService.ts
 import { extractText, getDocumentProxy } from "unpdf";
+import { sanitizePatientPHI } from "../lib/sanitizer.js";
+
 
 export interface ParsedPdfResult {
     text: string;
@@ -33,10 +35,12 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsedPdfResult> {
         }
 
         // 4. Sanitize text (normalize line endings and trim excess whitespace)
-        const sanitizedText = extracted
-            .replace(/\r\n/g, "\n")
-            .replace(/\n{3,}/g, "\n\n")
-            .trim();
+        const sanitizedText = sanitizePatientPHI(
+            extracted
+                .replace(/\r\n/g, "\n")
+                .replace(/\n{3,}/g, "\n\n")
+                .trim()
+        );
 
         console.log(`📄 PDF parsed: ${totalPages} page(s), extracted ${sanitizedText.length} characters.`);
 

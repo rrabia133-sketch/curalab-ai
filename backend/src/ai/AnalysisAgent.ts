@@ -55,7 +55,7 @@ Extract and return ONLY the structured JSON object:`;
         ],
         0.1, // low temperature for high factual accuracy
         true // enable JSON mode
-    );
+    );     
 
     // 2. Clean response in case the model wrapped it in ```json ... ```
     let cleaned = rawResponse.trim();
